@@ -1,117 +1,82 @@
+import re
+import sys
+import requests
 
-from tqdm import tqdm
-from DafManager import DafManager
+def get_url(masechta,daf,amud,url_type,positive_index=None):
+	assert(url_type in {'text','links'})
+	if url_type == 'text':
+		return f'http://www.sefaria.org/api/texts/{masechta}.{daf}{amud}'
+	if url_type == 'links':
+		return f'http://www.sefaria.org/api/links/{masechta}.{daf}{amud}.{positive_index}'
 
-masechta = 'Pesachim'
-first_daf=50
-first_amud='a'
-daf_amount = 0.5
+def get_json(url):
+	return requests.get(url).json()
 
-dm = DafManager(masechta,first_daf,first_amud,daf_amount)
+def select_gemara_data(gemara_json):
+	title = gemara_json['heRef']
+	hebrew_text = gemara_json['he']
+	num_segments = len(hebrew_text)
+	return title, hebrew_text, num_segments
 
-commentary_names = ['Rashi','Rashbam','Tosafot','Rashba','Maharsha']
+def cleanhtml(raw_html):
+  cleanr = re.compile('<.*?>')
+  cleantext = re.sub(cleanr, '', raw_html)
+  return cleantext
 
-daf = first_daf
-amud = first_amud
-dapim_covered = 0
+def is_wanted(commentary_choice, comment_title, comment_type):
+  is_sought = None
+  is_current = None  
+  if comment_type == 'Mishneh Torah':
+    is_sought = commentary_choice == 'Mishneh Torah'
+    is_current = comment_title.startswith("Mishneh Torah")
+  else:
+    is_sought = commentary_choice != 'Mishneh Torah'
+    is_current = f"{commentary_choice} on {masechta}" in comment_title
+  return is_sought and is_current
+
+# daf = 99
+daf = 36
+amud = 'a'
+# masechta = 'Pesachim'
+masechta = 'Yevamot'
 
 text = ''
+# segments_limit = 5
+segments_limit = None
 
-while dapim_covered < daf_amount:
-  
-  gemara_json = dm.get_gemara_json(masechta,daf,amud)
+wanted_commentaries = {
+    'Rashi':'רש"י',
+    'Rashbam':'רשב"ם',
+    'Tosafot':"תוס'",
+    'Chidushei Halachot':'מהרש"א',
+    # 'Rashba':'רשב"א',
+    # 'Mishneh Torah':'רמב"ם'
+		}
 
-  title = gemara_json['heRef']
-  hebrew_text = gemara_json['he']
-  num_segments = len(hebrew_text)
+gemara_url = get_url(masechta,daf,amud,'text')
+gemara_json = get_json(gemara_url)
+title, hebrew_text, num_segments = select_gemara_data(gemara_json)
 
-  commentary_json = {}
+text += title + '\n'
+for section_index in range(num_segments)[:segments_limit]:
+	positive_index = section_index + 1 # Commentaries index first segment as 1, not 0.
+	gemara_segment = hebrew_text[section_index]
 
-  comments = {}
+	text += gemara_segment + '\n'
+	links_url = get_url(masechta,daf,amud,'links',positive_index)
+	links_json = get_json(links_url)
 
-  text += title + '\n'
-
-  print(f"Fetching Daf {daf}{amud}")
-
-  for section_index in tqdm(range(num_segments)[:]):
-
-    text += hebrew_text[section_index] + '\n'
-
-    positive_index = section_index + 1
-
-    links_json = get_links_json(masechta,daf,amud,positive_index)
-    pass
-    rambam_objects = [
-      (
-        json_object['he'],
-        json_object['sourceHeRef'],
-        )
-      for json_object in links_json 
-      if json_object['ref'].startswith('Mishneh Torah')
-      ]
-
-    for commentary_choice in commentary_choices:
-      try:
-        pass
-      # comments[commentary_choice] = [
-        # (
-        #   json_object['he'],
-        #   json_object['sourceHeRef'],
-        #   )
-        # for json_object in links_json 
-        # if json_object['ref'].startswith('Mishneh Torah')
-        ]
-
-        # commentary_url = f'http://www.sefaria.org/api/texts/{commentary_choice}_on_{masechta}.{daf}{amud}.{commentary_index}'
-        # commentary_response = requests.get(commentary_url)
-        # commentary_json = commentary_response.json()
-        # comment_lst = commentary_json['he']
-
-      except:
-        # continue
-        pass
-
-      commentary_name = commentary_json['heCommentator']
-
-
-      if comment_lst:
-        text += '\n'
-        text += commentary_name
-
-      for comment in comment_lst:
-        if comment:
-          text += '\n'
-          if comment[-1]==':':
-            comment = comment[:-1]
-          text += comment
-          text += ' (' + commentary_name[:5] + ').'
-          pass
-
-    if rambam_objects:
-      for rambam in rambam_objects:
-        
-        din = rambam[0]
-        if din[-1]==':':
-          din = din[:-1]
-        
-        src = rambam[1]
-        
-        text += '\n'
-        text += 'כתב הרמב"ם: '
-        
-        text += din
-        text += ' '
-        text += '(' + src[17:] + ').'
-        pass
-
-        text += '\n'
-
-  daf,amud = next_amud(daf,amud)
-  dapim_covered += 0.5
+	for wanted_commentary,commentary_nickname in wanted_commentaries.items():
+		for link in links_json:
+			comment_title = link['index_title']
+			if is_wanted(wanted_commentary, comment_title,'Mishneh Torah') or is_wanted(wanted_commentary,comment_title,'mefaresh'):
+				comment = link['he']
+				if comment[-1] in {':','.',' '}:
+					comment = comment[:-1]
+				text += comment
+				text += ' (' + commentary_nickname +  ').' + '\n'
 
 text = cleanhtml(text)
 
-with open('output.txt', 'w', encoding='utf-8') as file:
-  file.write(text)
-
-pass
+with open('output.txt', 'w',encoding='utf-8') as file:  # Use file to refer to the file object
+	file.write(text)

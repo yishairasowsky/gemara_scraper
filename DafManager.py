@@ -11,12 +11,9 @@ class DafManager:
 		self.daf_amount = daf_amount
 
 
-	def get_text_json(masechta,daf,amud):
-
-		gemara_url = f'https://www.sefaria.org/api/texts/{masechta}.{daf}{amud}'
-		gemara_response = requests.get(gemara_url)
-		gemara_json = gemara_response.json()
-		return gemara_json
+	def get_final_text(self):
+		final_text = ''
+		return final_text
 
 
 	def get_next_amud(daf,amud):

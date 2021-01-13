@@ -11,6 +11,13 @@ class KnownValues(unittest.TestCase):
         result = json['text'][0][:29]
         expected = "The Gemara rejects a solution"
         self.assertEqual(expected,result)
+
+
+    def test_get_final_text_for_dapim(self):
+
+        result = DafManager.get_final_text(3)
+        expected = ""
+        self.assertEqual(expected,result)
          
 
     def test_get_links_json_for_dapim(self):
